@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Graph</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="sidebar">
+        <h2>Controls</h2>
+
+        <section>
+            <h3>Radial Scale</h3>
+            <label><input type="radio" name="scale" value="linear"> Linear</label>
+            <label><input type="radio" name="scale" value="sqrt"> Square Root</label>
+            <label><input type="radio" name="scale" value="log" checked> Logarithmic</label>
+        </section>
+        <section>
+            <h3>Angle Attribute</h3>
+            <select id="angle-select">
+                <option value="random">Random</option>
+                <!-- <option value="releaseYear">Release Year</option> -->
+                <option value="releaseDate">Release Date</option>
+                <option value="Peak CCU">Peak CCU</option>
+                <option value="Metacritic score">Metacritic Score</option>
+                <!-- <option value="User score">User Score</option> -->
+                <option value="Positive">Positive Reviews</option>
+                <option value="Negative">Negative Reviews</option>
+                <!-- <option value="Score rank">Score Rank</option> -->
+                <!-- <option value="Achievements">Achievements</option> -->
+                <option value="Recommendations">Recommendations</option>
+                <!-- <option value="Average playtime forever">Avg Playtime (All Time)</option>
+                <option value="Average playtime two weeks">Avg Playtime (2 Weeks)</option>
+                <option value="Median playtime forever">Median Playtime (All Time)</option>
+                <option value="Median playtime two weeks">Median Playtime (2 Weeks)</option> -->
+            </select>
+        </section>
+    </div>
+    <div id="chart">
+    </div>
+    <div id="metadata">
+
+    </div>
+    <script src="script.js"></script>
+
+</body>
+
+</html>
