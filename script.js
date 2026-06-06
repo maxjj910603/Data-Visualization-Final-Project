@@ -2,6 +2,11 @@
 const chartDiv = document.getElementById("chart");
 const width = chartDiv.clientWidth;
 const height = window.innerHeight;
+const projectMeta = document.getElementById("project-meta");
+const gameSearchInput = document.getElementById("game-search");
+const gameSearchButton = document.getElementById("game-search-button");
+const gameSearchClear = document.getElementById("game-search-clear");
+const gameSearchStatus = document.getElementById("game-search-status");
 
 // Define centre of the canvas
 const centreX = width / 2;
@@ -108,6 +113,24 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
 
     });
 
+    const genreCount = new Set(data.map(d => d.primaryGenre)).size;
+    if (projectMeta) {
+        projectMeta.innerHTML = `
+            <div class="meta-card">
+                <span class="meta-label">Games</span>
+                <strong class="meta-value">${data.length.toLocaleString()}</strong>
+            </div>
+            <div class="meta-card">
+                <span class="meta-label">Genres</span>
+                <strong class="meta-value">${genreCount}</strong>
+            </div>
+            <div class="meta-card">
+                <span class="meta-label">Mode</span>
+                <strong class="meta-value">Interactive</strong>
+            </div>
+        `;
+    }
+
     // Function for filter
     function createRangeFilter(parentSel, label, minVal, maxVal, step, fmt, onChange) {
         parentSel.append("h4").text(label);
@@ -150,6 +173,8 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
 
     // Tracking for current angle attribute
     let currentAngleAttr = "random";
+    let highlightedAppId = null;
+    let activeRadialScale = null;
 
 
     // Radial scale (inside .then() because maxPrice needs data)
@@ -169,6 +194,7 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
             .range([0, maxRadius])
     };
 
+    activeRadialScale = scales.log;
     let radialScale = scales.linear;
     // Price lines：round up maxPrice to nearest 50, divide into 5 lines
     const nLines = 5;
@@ -254,7 +280,80 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
 
     function applyFilters() {
         g.selectAll(".star")
-            .style("display", d => passesFilters(d) ? null : "none");
+            .style("display", d => {
+                const isHighlighted = highlightedAppId !== null && d.AppID === highlightedAppId;
+                return passesFilters(d) || isHighlighted ? null : "none";
+            });
+    }
+
+    function setSearchStatus(message, type = "") {
+        if (!gameSearchStatus) return;
+        gameSearchStatus.textContent = message;
+        gameSearchStatus.className = `search-status ${type}`.trim();
+    }
+
+    function clearHighlightedGame() {
+        highlightedAppId = null;
+        g.selectAll(".star.search-highlight")
+            .classed("search-highlight", false)
+            .attr("stroke", null)
+            .attr("stroke-width", null);
+        applyFilters();
+        setSearchStatus("Highlight cleared.");
+    }
+
+    function panToGame(d, radialScale) {
+        const starX = centreX + radialScale(Math.max(d.Price, 0.01)) * Math.cos(d.currentAngle + ANGLE_OFFSET);
+        const starY = centreY + radialScale(Math.max(d.Price, 0.01)) * Math.sin(d.currentAngle + ANGLE_OFFSET);
+        const currentTransform = d3.zoomTransform(svg.node());
+        const k = Math.max(currentTransform.k, 1.6);
+
+        svg.transition().duration(650)
+            .call(zoom.transform, d3.zoomIdentity
+                .translate(width / 2 - k * starX, height / 2 - k * starY)
+                .scale(k));
+    }
+
+    function highlightGame(d, shouldPan = true) {
+        highlightedAppId = d.AppID;
+
+        g.selectAll(".star.search-highlight")
+            .classed("search-highlight", false)
+            .attr("stroke", null)
+            .attr("stroke-width", null);
+
+        const selected = g.selectAll(".star")
+            .filter(star => star.AppID === highlightedAppId)
+            .style("display", null)
+            .classed("search-highlight", true)
+            .attr("stroke", "#ffffff")
+            .attr("stroke-width", 3)
+            .raise();
+
+        if (!selected.empty() && shouldPan) {
+            panToGame(d, activeRadialScale);
+        }
+
+        setSearchStatus(`Found: ${d.Name}`, "success");
+    }
+
+    function runGameSearch() {
+        const query = gameSearchInput ? gameSearchInput.value.trim().toLowerCase() : "";
+        if (!query) {
+            clearHighlightedGame();
+            return;
+        }
+
+        const exactMatch = data.find(d => d.Name && d.Name.toLowerCase() === query);
+        const partialMatch = data.find(d => d.Name && d.Name.toLowerCase().includes(query));
+        const match = exactMatch || partialMatch;
+
+        if (!match) {
+            setSearchStatus("No matching game found.", "error");
+            return;
+        }
+
+        highlightGame(match);
     }
 
     function computeAngles(attr) {
@@ -320,6 +419,13 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
             .attr("cy", d => centreY + radialScale(Math.max(d.Price, 0.01)) * Math.sin(d.currentAngle + ANGLE_OFFSET))
             .attr("r", d => sizeScale(d.Positive))
             .attr("fill", d => colorScale(d.primaryGenre));
+
+        if (highlightedAppId !== null) {
+            const selectedDatum = data.find(d => d.AppID === highlightedAppId);
+            if (selectedDatum) highlightGame(selectedDatum, false);
+        }
+
+        applyFilters();
     }
 
     // Star color legend
@@ -413,6 +519,7 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
         (lo, hi) => { filterState.rec = { min: lo, max: hi }; applyFilters(); });
     d3.selectAll("input[name='scale']").on("change", function () {
         const newScale = scales[this.value];
+        activeRadialScale = newScale;
         drawPriceLines(newScale);
         drawStars(newScale);
     });
@@ -423,12 +530,34 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
 
         const currentScaleValue = d3.select("input[name='scale']:checked").node().value;
         const currentRadialScale = scales[currentScaleValue];
+        activeRadialScale = currentRadialScale;
 
         g.selectAll(".star")
             .transition().duration(600)
             .attr("cx", d => centreX + currentRadialScale(Math.max(d.Price, 0.01)) * Math.cos(d.currentAngle + ANGLE_OFFSET))
-            .attr("cy", d => centreY + currentRadialScale(Math.max(d.Price, 0.01)) * Math.sin(d.currentAngle + ANGLE_OFFSET));
+            .attr("cy", d => centreY + currentRadialScale(Math.max(d.Price, 0.01)) * Math.sin(d.currentAngle + ANGLE_OFFSET))
+            .on("end", function (d) {
+                if (highlightedAppId !== null && d.AppID === highlightedAppId) {
+                    highlightGame(d, false);
+                }
+            });
     });
+
+    if (gameSearchButton) {
+        gameSearchButton.addEventListener("click", runGameSearch);
+    }
+
+    if (gameSearchInput) {
+        gameSearchInput.addEventListener("keydown", event => {
+            if (event.key === "Enter") runGameSearch();
+            if (event.key === "Escape") clearHighlightedGame();
+        });
+    }
+
+    if (gameSearchClear) {
+        gameSearchClear.addEventListener("click", clearHighlightedGame);
+    }
+
     svg.on("mousemove", function (event) {
         if (currentAngleAttr === "random") return;
 
@@ -491,4 +620,3 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
             .text(`${angleAttrLabels[currentAngleAttr]}: ${displayValue}`);
     });
 });
-

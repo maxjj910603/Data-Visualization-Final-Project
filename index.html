@@ -11,7 +11,29 @@
 
 <body>
     <div id="sidebar">
-        <h2>Controls</h2>
+        <div class="sidebar-brand">
+            <p class="eyebrow">Steam Game Atlas</p>
+            <h1>Space Graph</h1>
+            <p class="intro">
+                Explore Steam games as a star map. Price controls orbit distance, reviews shape star size, and genre drives color.
+            </p>
+            <div id="project-meta" class="project-meta">
+                <div class="meta-card">
+                    <span class="meta-label">Status</span>
+                    <strong class="meta-value">Loading</strong>
+                </div>
+            </div>
+        </div>
+
+        <section>
+            <h3>Find Game</h3>
+            <div class="search-control">
+                <input id="game-search" type="search" placeholder="Search game name">
+                <button id="game-search-button" type="button">Find</button>
+            </div>
+            <button id="game-search-clear" class="secondary-button" type="button">Clear highlight</button>
+            <div id="game-search-status" class="search-status">Type a game name to locate its star.</div>
+        </section>
 
         <section>
             <h3>Radial Scale</h3>
