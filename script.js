@@ -40,8 +40,37 @@ const PRICE_LABEL_FONT_SIZE = 15;
 // Define angle view's starting angle
 const ANGLE_OFFSET = -Math.PI / 2;
 
+// Adding sparks at the background
+const bgStars = svg.append("g").attr("class", "bg-stars");
+const numBg = 500;
+for (let i = 0; i < numBg; i++) {
+    bgStars.append("circle")
+        .attr("cx", Math.random() * width)
+        .attr("cy", Math.random() * height)
+        .attr("r", Math.random() * 1.2 + 0.2)
+        .attr("fill", "white")
+        .attr("opacity", Math.random() * 0.6 + 0.15);
+}
+
 // Zooming behavior
 const g = svg.append("g");
+
+
+// Decorating stars
+const defs = svg.append("defs");
+const glowFilter = defs.append("filter")
+    .attr("id", "star-glow")
+    .attr("x", "-60%").attr("y", "-60%")
+    .attr("width", "220%").attr("height", "220%");
+
+glowFilter.append("feGaussianBlur")
+    .attr("in", "SourceGraphic")
+    .attr("stdDeviation", 1.8)
+    .attr("result", "blur");
+
+const feMerge = glowFilter.append("feMerge");
+feMerge.append("feMergeNode").attr("in", "blur");
+feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
 
 // Star size explanation
@@ -369,9 +398,13 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
     }
     // Draw stars
     function drawStars(radialScale) {
-        g.selectAll(".star").remove();
+        g.selectAll(".stars-group").remove();
 
-        g.selectAll(".star")
+        const starsGroup = g.append("g")
+            .attr("class", "stars-group")
+            .attr("filter", "url(#star-glow)");
+
+        starsGroup.selectAll(".star")
             .data(data)
             .enter()
             .append("circle")
