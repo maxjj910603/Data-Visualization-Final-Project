@@ -142,6 +142,12 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
 
     });
 
+    const skewedAttrs = new Set([
+        "Positive", "Negative", "Recommendations", "Peak CCU",
+        "Average playtime forever", "Average playtime two weeks",
+        "Median playtime forever", "Median playtime two weeks"
+    ]);
+
     const genreCount = new Set(data.map(d => d.primaryGenre)).size;
     if (projectMeta) {
         projectMeta.innerHTML = `
@@ -200,8 +206,17 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
         );
     });
 
+    const attrSortedValues = {};
+    skewedAttrs.forEach(attr => {
+        attrSortedValues[attr] = data
+            .map(d => d[attr])
+            .filter(v => isFinite(v))
+            .sort((a, b) => a - b);
+    });
+
     // Tracking for current angle attribute
     let currentAngleAttr = "random";
+    let currentAngleDist = "linear";
     let highlightedAppId = null;
     let activeRadialScale = null;
 
@@ -279,10 +294,16 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
         if (attr === "random") return null;
         const values = data.map(d => d[attr]).filter(v => isFinite(v) && v !== null);
         const uniqueCount = new Set(values).size;
+        const range = [0, 2 * Math.PI * (uniqueCount - 1) / uniqueCount];
 
+        if (currentAngleDist === "sqrt") {
+            return d3.scaleSqrt()
+                .domain([0, d3.max(values)])
+                .range(range);
+        }
         return d3.scaleLinear()
             .domain([d3.min(values), d3.max(values)])
-            .range([0, 2 * Math.PI * (uniqueCount - 1) / uniqueCount]);
+            .range(range);
     }
 
     const filterState = {
@@ -386,16 +407,37 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
     }
 
     function computeAngles(attr) {
-        const angleScale = getAngleScale(attr);
-        data.forEach(d => {
-            if (!angleScale) {
-                d.currentAngle = d.angle; // random
-            } else {
-                const val = d[attr];
-                d.currentAngle = isFinite(val) ? angleScale(val) : d.angle;
+        if (attr === "random") {
+            data.forEach(d => { d.currentAngle = d.angle; });
+            return;
+        }
+
+        if (currentAngleDist === "rank") {
+            if (!attrSortedValues[attr]) {
+                attrSortedValues[attr] = data
+                    .map(d => d[attr])
+                    .filter(v => isFinite(v))
+                    .sort((a, b) => a - b);
             }
-        });
+            const sorted = [...data]
+                .filter(d => isFinite(d[attr]))
+                .sort((a, b) => a[attr] - b[attr]);
+            const n = sorted.length;
+            sorted.forEach((d, rank) => {
+                d.currentAngle = (rank / n) * 2 * Math.PI * (n - 1) / n;
+            });
+            data.filter(d => !isFinite(d[attr]))
+                .forEach(d => { d.currentAngle = d.angle; });
+        } else {
+            const angleScale = getAngleScale(attr);
+            data.forEach(d => {
+                const val = d[attr];
+                d.currentAngle = angleScale && isFinite(val) ? angleScale(val) : d.angle;
+            });
+        }
     }
+
+
     // Draw stars
     function drawStars(radialScale) {
         g.selectAll(".stars-group").remove();
@@ -558,6 +600,13 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
     });
     d3.select("#angle-select").on("change", function () {
         currentAngleAttr = this.value;
+
+        // Hide guideline in random mode
+        if (this.value === "random") {
+            guideLine.style("display", "none");
+            guideLabel.style("display", "none");
+        }
+
         const attr = this.value;
         computeAngles(attr);
 
@@ -574,6 +623,20 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
                     highlightGame(d, false);
                 }
             });
+    });
+
+
+    d3.selectAll("input[name='angle-dist']").on("change", function () {
+        currentAngleDist = this.value;
+        computeAngles(currentAngleAttr);
+
+        const currentScaleValue = d3.select("input[name='scale']:checked").node().value;
+        const currentRadialScale = scales[currentScaleValue];
+
+        g.selectAll(".star")
+            .transition().duration(600)
+            .attr("cx", d => centreX + currentRadialScale(Math.max(d.Price, 0.01)) * Math.cos(d.currentAngle + ANGLE_OFFSET))
+            .attr("cy", d => centreY + currentRadialScale(Math.max(d.Price, 0.01)) * Math.sin(d.currentAngle + ANGLE_OFFSET));
     });
 
     if (gameSearchButton) {
@@ -613,7 +676,21 @@ d3.csv("data/steam_game_data_clean.csv").then(function (data) {
         let lineAngle;
         let displayValue;
 
-        if (intAttributes.has(currentAngleAttr)) {
+        if (currentAngleDist === "rank") {
+            if (!attrSortedValues[currentAngleAttr]) {
+                attrSortedValues[currentAngleAttr] = data
+                    .map(d => d[currentAngleAttr])
+                    .filter(v => isFinite(v))
+                    .sort((a, b) => a - b);
+            }
+            const sorted = attrSortedValues[currentAngleAttr];
+            const maxAngle = 2 * Math.PI * (sorted.length - 1) / sorted.length;
+            const percentile = Math.min(normalizedAngle / maxAngle, 1);
+            const idx = Math.round(percentile * (sorted.length - 1));
+            displayValue = sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+            lineAngle = mouseAngle;
+
+        } else if (intAttributes.has(currentAngleAttr)) {
             const rawValue = angleScaleForAttr.invert(normalizedAngle);
             const snapped = Math.round(rawValue);
             const [minVal, maxVal] = angleScaleForAttr.domain();
